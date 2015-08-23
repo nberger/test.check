@@ -31,7 +31,14 @@
     [(gen/vector gen/int)]
     vector-elements-are-unique*))
 
+(def ^:private divide-seven
+  (prop/for-all
+    [i gen/int]
+    (not= i (/ 7 i))))
+
 (defspec this-is-supposed-to-fail 100 vector-elements-are-unique)
+
+(defspec this-is-supposed-to-error 100 divide-seven)
 
 (defn- capture-test-var
   [v]
@@ -69,4 +76,19 @@
     (is (== 1 (:fail @report-counters)))
     (is (re-seq
           #"(?s)Shrinking vector-elements-are-unique starting with parameters \[\[.+"
+          stdout)))
+
+  (let [[report-counters stdout]
+        (binding [ct/*report-shrinking* true
+                  ; need to keep the failure of this-is-supposed-to-error from
+                  ; affecting the clojure.test.check test run
+                  *report-counters* (ref *initial-report-counters*)]
+          [*report-counters* (capture-test-var #'this-is-supposed-to-error)])]
+    (is (= {:test 1
+            :pass 0
+            :fail 0
+            :error 1}
+            @report-counters))
+    (is (re-seq
+          #"(?s)exception, not in assertion"
           stdout))))
