@@ -24,7 +24,13 @@
       [non-nil-seed (random/make-random non-nil-seed)])))
 
 (defn- complete
-  [property num-trials seed]
+  [property num-trials seed reporter-fn]
+  (reporter-fn {:type :complete
+                :property property
+                :result true
+                :num-tests num-trials
+                :seed seed})
+
   {:result true :num-tests num-trials :seed seed})
 
 (defn- not-falsey-or-exception?
@@ -85,7 +91,7 @@
            rstate rng]
       (reporter-fn {:type :start-trial})
       (if (== so-far num-tests)
-        (complete property num-tests created-seed)
+        (complete property num-tests created-seed reporter-fn)
         (let [[size & rest-size-seq] size-seq
               [r1 r2] (random/split rstate)
               result-map-rose (gen/call-gen property r1 size)
