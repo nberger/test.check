@@ -25,14 +25,15 @@
       [non-nil-seed (random/make-random non-nil-seed)])))
 
 (defn- complete
-  [property num-trials seed reporter-fn]
+  [property num-trials seed reporter-fn labels]
   (reporter-fn {:type :complete
                 :property property
                 :result true
                 :num-tests num-trials
-                :seed seed})
+                :seed seed
+                :labels labels})
 
-  {:result true :num-tests num-trials :seed seed})
+  {:result true :num-tests num-trials :seed seed :labels labels})
 
 (defn quick-check
   "Tests `property` `num-tests` times.
@@ -86,14 +87,16 @@
         size-seq (gen/make-size-range-seq max-size)]
     (loop [so-far 0
            size-seq size-seq
-           rstate rng]
+           rstate rng
+           labels []]
       (if (== so-far num-tests)
-        (complete property num-tests created-seed reporter-fn)
+        (complete property num-tests created-seed reporter-fn labels)
         (let [[size & rest-size-seq] size-seq
               [r1 r2] (random/split rstate)
               result-map-rose (gen/call-gen property r1 size)
               result-map (rose/root result-map-rose)
               result (:result result-map)
+              labels (conj labels (:labels result-map))
               args (:args result-map)
               so-far (inc so-far)]
           (if (results/passing? result)
@@ -102,8 +105,8 @@
                             :property property
                             :so-far so-far
                             :num-tests num-tests})
-              (recur so-far rest-size-seq r2))
-            (failure property result-map-rose so-far size created-seed reporter-fn)))))))
+              (recur so-far rest-size-seq r2 labels))
+            (failure property result-map-rose so-far size created-seed reporter-fn labels)))))))
 
 (defn- smallest-shrink
   [total-nodes-visited depth smallest]
@@ -163,7 +166,7 @@
                 (recur tail new-smallest (inc total-nodes-visited) depth)))))))))
 
 (defn- failure
-  [property failing-rose-tree trial-number size seed reporter-fn]
+  [property failing-rose-tree trial-number size seed reporter-fn labels]
   (let [root (rose/root failing-rose-tree)
         result (:result root)
         failing-args (:args root)]
@@ -173,7 +176,8 @@
                   :result (results/passing? result)
                   :result-data (results/result-data result)
                   :trial-number trial-number
-                  :failing-args failing-args})
+                  :failing-args failing-args
+                  :labels labels})
 
     (let [shrunk (shrink-loop failing-rose-tree
                               #(reporter-fn (assoc % :property property)))]
@@ -186,6 +190,7 @@
        :result-data (results/result-data result)
        :seed seed
        :failing-size size
+       :labels labels
        :num-tests trial-number
        :fail (vec failing-args)
        :shrunk shrunk})))

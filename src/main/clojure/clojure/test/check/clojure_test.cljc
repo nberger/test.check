@@ -11,6 +11,7 @@
   (:require #?(:clj  [clojure.test :as ct]
                :cljs [cljs.test :as ct :include-macros true])
             [clojure.test.check :as tc]
+            [clojure.test.check.stats :as stats]
             [clojure.test.check.impl :refer [get-current-time-millis
                                              exception-like?]]
             [clojure.test.check.results :as results]))
@@ -38,12 +39,17 @@
     :failure
     (ct/report {:type :clojure.test.check.clojure-test/shrinking
                 :clojure.test.check.clojure-test/property (:property args)
-                :clojure.test.check.clojure-test/params (vec (:failing-args args))})
-
+                :clojure.test.check.clojure-test/params (vec (:failing-args args))
+                :clojure.test.check.clojure-test/trial-count (:trial-number args)
+                :clojure.test.check.clojure-test/labels (:labels args)})
     :shrunk
     (ct/report {:type :clojure.test.check.clojure-test/shrunk
                 :clojure.test.check.clojure-test/property (:property args)
-                :clojure.test.check.clojure-test/params (-> args :shrunk :smallest vec)})
+                :clojure.test.check.clojure-test/params (-> args :shrunk :smallest vec)
+                :clojure.test.check.clojure-test/labels (:labels args)
+                :clojure.test.check.clojure-test/trial-count (:trial-number args)})
+
+    ; else
     nil))
 
 (def ^:dynamic *default-opts*
@@ -114,6 +120,17 @@
   "Milliseconds between reports emitted by `trial-report-periodic`."
   10000)
 
+(def ^:dynamic *report-stats*
+  "If true, a report showing the distribution of test case labels will be
+  printed. See clojure.test.check.stats for details on how to assign
+  labels to test cases"
+  false)
+
+(def ^:dynamic *report-empty-stats*
+  "If true, the test case labels distribution report will be printed even when
+  no labels were generated"
+  false)
+
 (def ^:private last-trial-report (atom 0))
 
 (let [begin-test-var-method (get-method ct/report #?(:clj  :begin-test-var
@@ -163,9 +180,23 @@
                                     clojure.test.check.clojure-test/*report-trials*))]
     (trial-report-fn m)))
 
+(defn- maybe-print-stats
+  "Conditionally prints stats. Printing is done when *report-stats* is enabled and
+  the stats are not empty or *report-empty-stats* is enabled"
+  [m]
+  (when (and *report-stats*
+             (or *report-empty-stats*
+                 (seq (::labels m))))
+    (with-test-out*
+      #(stats/print (::trial-count m) (::labels m)))))
+
 (defmethod ct/report #?(:clj ::shrinking :cljs [::ct/default ::shrinking]) [m]
   (when clojure.test.check.clojure-test/*report-shrinking*
     (with-test-out*
       (fn []
         (println "Shrinking" (get-property-name m)
-                 "starting with parameters" (pr-str (::params m)))))))
+                 "starting with parameters" (pr-str (::params m))))))
+  (maybe-print-stats m))
+
+(defmethod ct/report #?(:clj ::failure :cljs [::ct/default ::failure]) [m]
+  (maybe-print-stats m))
