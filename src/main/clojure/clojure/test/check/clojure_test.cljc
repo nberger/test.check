@@ -18,7 +18,8 @@
 
 (defn assert-check
   [{:keys [result result-data] :as m}]
-  (prn m)
+  ;; print the resulting map but without labels which can be very large
+  (prn (dissoc m :labels))
   (if (and (not (results/passing? result))
            (exception-like? (:clojure.test.check.properties/error result-data)))
     (throw (:clojure.test.check.properties/error result-data))
