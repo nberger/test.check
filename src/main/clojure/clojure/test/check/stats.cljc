@@ -44,9 +44,8 @@
   (doseq [[labels-set q] (->> (map set labels)
                               frequencies
                               (sort-by second)
-                              reverse)]
-    (println (format "%.1f%% %s"
-                     (double (* 100 (/ q num-tests)))
-                     (if (seq labels-set)
-                       (string/join ", " (sort labels-set))
-                       "No labels")))))
+                              reverse)
+          :when (seq labels-set)
+          :let [percentage (double (* 100 (/ q num-tests)))
+                labels-str (string/join ", " (sort labels-set))]]
+    (println (format "%.1f%% %s" percentage labels-str))))

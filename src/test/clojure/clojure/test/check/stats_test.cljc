@@ -84,15 +84,14 @@
 
 (deftest print-stats-test
   (let [labels [[:lt-10]
-                [:lt-10]
                 [:lt-10 :lt-20]
+                [:lt-10]
                 nil]
         out (with-out-str (stats/print 5 labels))
         lines (string/split-lines out)]
-    (is (= 3 (count lines)))
-    (is (some #{"40.0% :lt-10"} lines))
-    (is (some #{"20.0% :lt-10, :lt-20"} lines))
-    (is (some #{"20.0% No labels"} lines))))
+    (is (= 2 (count lines)))
+    (is (= "40.0% :lt-10" (first lines)))
+    (is (= "20.0% :lt-10, :lt-20" (second lines)))))
 
 (defmacro with-test-out-str
   "Evaluates exprs in a context in which *test-out* is bound to a fresh
@@ -107,6 +106,7 @@
 
 (deftest for-all-classify-test-print-stats
   (let [p (-> (prop/for-all [i gen/pos-int] (< i 50))
+              (stats/classify (fn [x] (< x 0)) :negative)
               (stats/classify (fn [x] (< x 10)) :lt-10)
               (stats/classify (fn [x] (< x 20)) :lt-20)
               (stats/classify (fn [x] (< x 30)) :lt-30)
