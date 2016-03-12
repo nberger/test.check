@@ -106,21 +106,20 @@
        (str s#))))
 
 (deftest for-all-classify-test-print-stats
-  (binding [clojure.test.check.clojure-test/*report-stats* true]
-    (let [p (-> (prop/for-all [i gen/pos-int] (< i 50))
-                (stats/classify (fn [x] (< x 10)) :lt-10)
-                (stats/classify (fn [x] (< x 20)) :lt-20)
-                (stats/classify (fn [x] (< x 30)) :lt-30)
-                (stats/classify (fn [x] (>= x 30)) :gte-30))
-          test-out (with-test-out-str
-                     (tc/quick-check 100 p
-                                     :reporter-fn t.c.ct/default-reporter-fn))
-          lines (string/split-lines test-out)]
-      (is (= 5 (count lines))
-          "prints out one line for each label line + one line for the ct/report :type :shrunk")
-      (is (some #(re-find #"^\{:type :clojure.test.check.clojure-test/shrunk" %) lines)
-          "prints one line for the ct/report :type :shrunk")
-      (is (some #(re-find #"^\d+\.\d% :lt-10, :lt-20, :lt-30$" %) lines))
-      (is (some #(re-find #"^\d+\.\d% :lt-20, :lt-30$" %) lines))
-      (is (some #(re-find #"^\d+\.\d% :lt-30$" %) lines))
-      (is (some #(re-find #"^\d+\.\d% :gte-30$" %) lines)))))
+  (let [p (-> (prop/for-all [i gen/pos-int] (< i 50))
+              (stats/classify (fn [x] (< x 10)) :lt-10)
+              (stats/classify (fn [x] (< x 20)) :lt-20)
+              (stats/classify (fn [x] (< x 30)) :lt-30)
+              (stats/classify (fn [x] (>= x 30)) :gte-30))
+        test-out (with-test-out-str
+                   (tc/quick-check 100 p
+                                   :reporter-fn t.c.ct/default-reporter-fn))
+        lines (string/split-lines test-out)]
+    (is (= 5 (count lines))
+        "prints out one line for each label line + one line for the ct/report :type :shrunk")
+    (is (some #(re-find #"^\{:type :clojure.test.check.clojure-test/shrunk" %) lines)
+        "prints one line for the ct/report :type :shrunk")
+    (is (some #(re-find #"^\d+\.\d% :lt-10, :lt-20, :lt-30$" %) lines))
+    (is (some #(re-find #"^\d+\.\d% :lt-20, :lt-30$" %) lines))
+    (is (some #(re-find #"^\d+\.\d% :lt-30$" %) lines))
+    (is (some #(re-find #"^\d+\.\d% :gte-30$" %) lines))))

@@ -120,17 +120,6 @@
   "Milliseconds between reports emitted by `trial-report-periodic`."
   10000)
 
-(def ^:dynamic *report-stats*
-  "If true, a report showing the distribution of test case labels will be
-  printed. See clojure.test.check.stats for details on how to assign
-  labels to test cases"
-  false)
-
-(def ^:dynamic *report-empty-stats*
-  "If true, the test case labels distribution report will be printed even when
-  no labels were generated"
-  false)
-
 (def ^:private last-trial-report (atom 0))
 
 (let [begin-test-var-method (get-method ct/report #?(:clj  :begin-test-var
@@ -180,13 +169,10 @@
                                     clojure.test.check.clojure-test/*report-trials*))]
     (trial-report-fn m)))
 
-(defn- maybe-print-stats
-  "Conditionally prints stats. Printing is done when *report-stats* is enabled and
-  the stats are not empty or *report-empty-stats* is enabled"
+(defn- print-stats
+  "Prints stats when the test report includes some labels"
   [m]
-  (when (and *report-stats*
-             (or *report-empty-stats*
-                 (seq (::labels m))))
+  (when (seq (::labels m))
     (with-test-out*
       #(stats/print (::trial-count m) (::labels m)))))
 
@@ -196,7 +182,7 @@
       (fn []
         (println "Shrinking" (get-property-name m)
                  "starting with parameters" (pr-str (::params m))))))
-  (maybe-print-stats m))
+  (print-stats m))
 
 (defmethod ct/report #?(:clj ::failure :cljs [::ct/default ::failure]) [m]
-  (maybe-print-stats m))
+  (print-stats m))
