@@ -93,16 +93,14 @@
     (is (= "40.0% :lt-10" (first lines)))
     (is (= "20.0% :lt-10, :lt-20" (second lines)))))
 
-(defmacro with-test-out-str
-  "Evaluates exprs in a context in which *test-out* is bound to a fresh
-  StringWriter.  Returns the string created by any nested printing
-  calls.
-  Modified version of clojure.core/with-out-str"
-  [& body]
-  `(let [s# (new java.io.StringWriter)]
-     (binding [test/*test-out* s#]
-       ~@body
-       (str s#))))
+(defn- with-test-out-str
+  [f]
+  #?(:cljs (with-out-str (f))
+     :clj  (let [s# (new java.io.StringWriter)]
+             (binding [test/*test-out* s#]
+               (f)
+               (str s#)))))
+
 
 (deftest for-all-classify-test-print-stats
   (let [p (-> (prop/for-all [i gen/pos-int] (< i 50))
@@ -112,13 +110,17 @@
               (stats/classify (fn [x] (< x 30)) :lt-30)
               (stats/classify (fn [x] (>= x 30)) :gte-30))
         test-out (with-test-out-str
-                   (tc/quick-check 100 p
-                                   :reporter-fn t.c.ct/default-reporter-fn))
+                   #(tc/quick-check 100 p
+                                    :reporter-fn t.c.ct/default-reporter-fn))
         lines (string/split-lines test-out)]
-    (is (= 5 (count lines))
+    (is (= #?(:clj 5
+              ; cljs.test/report doesn't print by default so no line for :shrunk
+              :cljs 4)
+           (count lines))
         "prints out one line for each label line + one line for the ct/report :type :shrunk")
-    (is (some #(re-find #"^\{:type :clojure.test.check.clojure-test/shrunk" %) lines)
-        "prints one line for the ct/report :type :shrunk")
+    #?(:clj
+       (is (some #(re-find #"^\{:type :clojure.test.check.clojure-test/shrunk" %) lines)
+           "prints one line for the ct/report :type :shrunk"))
     (is (some #(re-find #"^\d+\.\d% :lt-10, :lt-20, :lt-30$" %) lines))
     (is (some #(re-find #"^\d+\.\d% :lt-20, :lt-30$" %) lines))
     (is (some #(re-find #"^\d+\.\d% :lt-30$" %) lines))
