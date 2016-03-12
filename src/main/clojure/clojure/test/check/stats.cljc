@@ -1,6 +1,7 @@
 (ns clojure.test.check.stats
   (:refer-clojure :exclude [print])
   (:require [clojure.string :as string]
+            #?(:cljs [goog.string.format])
             [clojure.test.check.generators :as gen]))
 
 (defn- add-label-to-result-map [result-map label]
@@ -38,6 +39,12 @@
         result-map))
     prop))
 
+(defn- format* [fmt & args]
+  (apply #?(:clj format
+            :cljs goog.string.format)
+         fmt
+         args))
+
 (defn print
   "Prints the percentage of occurence for each set of labels"
   [num-tests labels]
@@ -48,4 +55,4 @@
           :when (seq labels-set)
           :let [percentage (double (* 100 (/ q num-tests)))
                 labels-str (string/join ", " (sort labels-set))]]
-    (println (format "%.1f%% %s" percentage labels-str))))
+    (println (format* "%.1f%% %s" percentage labels-str))))
