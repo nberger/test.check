@@ -104,7 +104,8 @@
               (reporter-fn {:type :trial
                             :property property
                             :so-far so-far
-                            :num-tests num-tests})
+                            :num-tests num-tests
+                            :labels labels})
               (recur so-far rest-size-seq r2 labels))
             (failure property result-map-rose so-far size created-seed reporter-fn labels)))))))
 
