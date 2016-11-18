@@ -86,28 +86,31 @@
                                     (println \"Uh oh...\"))))"
   [num-tests property & {:keys [seed max-size reporter-fn]
                          :or {max-size 200, reporter-fn (constantly nil)}}]
-  (let [[created-seed rng] (make-rng seed)
-        size-seq (gen/make-size-range-seq max-size)]
-    (loop [so-far 0
-           size-seq size-seq
-           rstate rng]
-      (if (== so-far num-tests)
-        (complete property num-tests created-seed reporter-fn)
-        (let [[size & rest-size-seq] size-seq
-              [r1 r2] (random/split rstate)
-              result-map-rose (gen/call-gen property r1 size)
-              result-map (rose/root result-map-rose)
-              result (:result result-map)
-              args (:args result-map)
-              so-far (inc so-far)]
-          (if (not-falsey-or-exception? result)
-            (do
-              (reporter-fn {:type :trial
-                            :property property
-                            :so-far so-far
-                            :num-tests num-tests})
-              (recur so-far rest-size-seq r2))
-            (failure property result-map-rose so-far size created-seed reporter-fn)))))))
+  (let [[created-seed rng] (make-rng seed)]
+    (->> (gen/make-size-range-seq max-size)
+         (take num-tests)
+         (reduce
+           (fn [{:keys [rstate] :as qc-state} size]
+             (let [[r1 r2] (random/split rstate)
+                   result-map-rose (gen/call-gen property r1 size)
+                   result (-> result-map-rose rose/root :result)
+                   qc-state (-> (update qc-state :so-far inc)
+                                (assoc :rstate r2
+                                       :result-map-rose result-map-rose
+                                       :size size))]
+               (if (not-falsey-or-exception? result)
+                 (do
+                   (reporter-fn {:type :trial
+                                 :property property
+                                 :so-far (:so-far qc-state)
+                                 :num-tests num-tests})
+                   qc-state)
+                 (reduced qc-state))))
+           {:rstate rng :so-far 0})
+         ((fn [{:keys [result-map-rose so-far size]}]
+            (if (not-falsey-or-exception? (-> result-map-rose rose/root :result))
+              (complete property num-tests created-seed reporter-fn)
+              (failure property result-map-rose so-far size created-seed reporter-fn)))))))
 
 (defn- smallest-shrink
   [total-nodes-visited depth smallest]
