@@ -13,31 +13,33 @@
             [clojure.test.check.rose-tree :as rose]))
 
 (defn- complete
-  [property num-trials seed reporter-fn]
+  [property num-trials seed timestamps reporter-fn]
   (reporter-fn {:type :complete
                 :property property
                 :result true
                 :num-tests num-trials
+                :timestamps timestamps
                 :seed seed})
 
-  {:result true :num-tests num-trials :seed seed})
+  {:result true :num-tests num-trials :seed seed :timestamps timestamps})
 
 (defn reporter-fn->step-fn
   [reporter-fn]
-  (fn [{:keys [state property num-tests so-far-tests seed size shrunk]
+  (fn [{:keys [state property num-tests so-far-tests seed size shrunk timestamps]
         :as qc-result}]
     (case state
       :started
       qc-result
 
       :succeeded
-      (complete property so-far-tests seed reporter-fn)
+      (complete property so-far-tests seed timestamps reporter-fn)
 
       :trying
       (do
         (reporter-fn {:type :trial
                             :property property
                             :so-far so-far-tests
+                            :timestamps timestamps
                             :num-tests num-tests})
         qc-result)
 
@@ -49,6 +51,7 @@
                         :result (results/passing? result)
                         :result-data (results/result-data result)
                         :trial-number so-far-tests
+                        :timestamps timestamps
                         :failing-args args})
           qc-result))
 
@@ -59,6 +62,7 @@
                         :result result
                         :args args
                         :pass? pass?
+                        :timestamps timestamps
                         :current-smallest smallest})
           qc-result))
 
@@ -68,6 +72,7 @@
                       :property property
                       :trial-number so-far-tests
                       :failing-args args
+                      :timestamps timestamps
                       :shrunk shrunk})
         {:result (results/passing? result)
          :result-data (results/result-data result)
@@ -127,4 +132,6 @@
                          :or {max-size 200, reporter-fn (constantly nil)}}]
   (ctc2/quick-check num-tests property {:seed seed
                                         :max-size max-size
-                                        :step-fn (reporter-fn->step-fn reporter-fn)}))
+                                        :step-fn (comp
+                                                   (reporter-fn->step-fn reporter-fn)
+                                                   ctc2/adds-timestamps-step-fn)}))

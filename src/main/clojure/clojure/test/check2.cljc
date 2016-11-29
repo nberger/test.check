@@ -6,6 +6,10 @@
             [clojure.test.check.impl :refer [get-current-time-millis]]
             ))
 
+(defn adds-timestamps-step-fn
+  [{:keys [state timestamps] :as qc-result}]
+  (assoc-in qc-result [:timestamps state] (get-current-time-millis)))
+
 (defrecord QuickCheckState
   [state num-tests so-far-tests shrink-total-steps result smallest abort?])
 
