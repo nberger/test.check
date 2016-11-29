@@ -1011,6 +1011,7 @@
           failing-steps (filter (complement :pass?) shrink-steps)
           passing-steps (filter :pass? shrink-steps)
           get-args-and-smallest-args (juxt (comp first :args) (comp first :args :current-smallest))]
+      (is (seq failing-steps))
       (is (every? #(not (pred (-> % :args first))) failing-steps)
           "pred on args is falsey in all failing steps")
       (is (every? #(pred (-> % :args first)) passing-steps)

@@ -78,8 +78,8 @@ succeeded | failure
                                 (assoc-in [:shrunk :pass?] false)
                                 (assoc-in [:shrunk :smallest] new-smallest))]
               (if-let [children (seq (rose/children head))]
-                (recur (update-in qc-state [:shrunk :depth] inc) children new-smallest)
-                (recur qc-state tail new-smallest)))))))))
+                (recur (step-fn (update-in qc-state [:shrunk :depth] inc)) children new-smallest)
+                (recur (step-fn qc-state) tail new-smallest)))))))))
 
 (defn quick-check
   "Tests `property` `num-tests` times.
