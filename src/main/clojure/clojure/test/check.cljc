@@ -10,34 +10,37 @@
 (ns clojure.test.check
   (:require [clojure.test.check2 :as ctc2]
             [clojure.test.check.results :as results]
-            [clojure.test.check.rose-tree :as rose]))
+            [clojure.test.check.rose-tree :as rose]
+            [clojure.test.check.stats :as stats]))
 
 (defn- complete
-  [property num-trials seed reporter-fn]
+  [property num-trials seed reporter-fn labels]
   (reporter-fn {:type :complete
                 :property property
                 :result true
                 :num-tests num-trials
-                :seed seed})
+                :seed seed
+                :labels labels})
 
-  {:result true :num-tests num-trials :seed seed})
+  {:result true :num-tests num-trials :seed seed :labels labels})
 
 (defn reporter-fn->step-fn
   [reporter-fn]
-  (fn [{:keys [state property num-tests so-far-tests seed size shrunk]
+  (fn [{:keys [state property num-tests so-far-tests seed size shrunk labels]
         :as qc-result}]
     (case state
       :started
       qc-result
 
       :succeeded
-      (complete property so-far-tests seed reporter-fn)
+      (complete property so-far-tests seed reporter-fn labels)
 
       :trying
       (do
         (reporter-fn {:type :trial
                             :property property
                             :so-far so-far-tests
+                            :labels labels
                             :num-tests num-tests})
         qc-result)
 
@@ -49,6 +52,7 @@
                         :result (results/passing? result)
                         :result-data (results/result-data result)
                         :trial-number so-far-tests
+                        :labels labels
                         :failing-args args})
           qc-result))
 
@@ -68,6 +72,7 @@
                       :property property
                       :trial-number so-far-tests
                       :failing-args args
+                      :labels labels
                       :shrunk shrunk})
         {:result (results/passing? result)
          :result-data (results/result-data result)
@@ -75,6 +80,7 @@
          :failing-size size
          :num-tests so-far-tests
          :fail (vec args)
+         :labels labels
          :shrunk shrunk}))))
 
 (defn quick-check
@@ -127,4 +133,6 @@
                          :or {max-size 200, reporter-fn (constantly nil)}}]
   (ctc2/quick-check num-tests property {:seed seed
                                         :max-size max-size
-                                        :step-fn (reporter-fn->step-fn reporter-fn)}))
+                                        :step-fn (comp
+                                                   (reporter-fn->step-fn reporter-fn)
+                                                   stats/step-fn)}))

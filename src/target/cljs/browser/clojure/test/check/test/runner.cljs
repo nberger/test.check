@@ -4,6 +4,7 @@
             [clojure.test.check.test]
             [clojure.test.check.random-test]
             [clojure.test.check.rose-tree-test]
+            [clojure.test.check.stats-test]
             [clojure.test.check.clojure-test-test]))
 
 (enable-console-print!)
@@ -12,5 +13,6 @@
   'clojure.test.check.test
   'clojure.test.check.random-test
   'clojure.test.check.rose-tree-test
+  'clojure.test.check.stats-test
   'clojure.test.check.clojure-test-test)
 

@@ -11,13 +11,15 @@
   (:require #?(:clj  [clojure.test :as ct]
                :cljs [cljs.test :as ct :include-macros true])
             [clojure.test.check :as tc]
+            [clojure.test.check.stats :as stats]
             [clojure.test.check.impl :refer [get-current-time-millis
                                              exception-like?]]
             [clojure.test.check.results :as results]))
 
 (defn assert-check
   [{:keys [result result-data] :as m}]
-  (prn m)
+  ;; print the resulting map but without labels which can be very large
+  (prn (dissoc m :labels))
   (if (and (not (results/passing? result))
            (exception-like? (:clojure.test.check.properties/error result-data)))
     (throw (:clojure.test.check.properties/error result-data))
@@ -38,12 +40,17 @@
     :failure
     (ct/report {:type :clojure.test.check.clojure-test/shrinking
                 :clojure.test.check.clojure-test/property (:property args)
-                :clojure.test.check.clojure-test/params (vec (:failing-args args))})
-
+                :clojure.test.check.clojure-test/params (vec (:failing-args args))
+                :clojure.test.check.clojure-test/trial-count (:trial-number args)
+                :clojure.test.check.clojure-test/labels (:labels args)})
     :shrunk
     (ct/report {:type :clojure.test.check.clojure-test/shrunk
                 :clojure.test.check.clojure-test/property (:property args)
-                :clojure.test.check.clojure-test/params (-> args :shrunk :smallest vec)})
+                :clojure.test.check.clojure-test/params (-> args :shrunk :smallest vec)
+                :clojure.test.check.clojure-test/labels (:labels args)
+                :clojure.test.check.clojure-test/trial-count (:trial-number args)})
+
+    ; else
     nil))
 
 (def ^:dynamic *default-opts*
@@ -163,9 +170,20 @@
                                     clojure.test.check.clojure-test/*report-trials*))]
     (trial-report-fn m)))
 
+(defn- print-stats
+  "Prints stats when the test report includes some labels"
+  [m]
+  (when (seq (::labels m))
+    (with-test-out*
+      #(stats/print (::trial-count m) (::labels m)))))
+
 (defmethod ct/report #?(:clj ::shrinking :cljs [::ct/default ::shrinking]) [m]
   (when clojure.test.check.clojure-test/*report-shrinking*
     (with-test-out*
       (fn []
         (println "Shrinking" (get-property-name m)
-                 "starting with parameters" (pr-str (::params m)))))))
+                 "starting with parameters" (pr-str (::params m))))))
+  (print-stats m))
+
+(defmethod ct/report #?(:clj ::failure :cljs [::ct/default ::failure]) [m]
+  (print-stats m))
