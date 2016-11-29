@@ -3,13 +3,12 @@
             [clojure.test.check.random :as random]
             [clojure.test.check.results :as results]
             [clojure.test.check.rose-tree :as rose]
-            [clojure.test.check.impl :refer [get-current-time-millis]]
-            ))
+            [clojure.test.check.impl :refer [get-current-time-millis]]))
 
 (defrecord QuickCheckState
   [step num-tests so-far-tests shrink-total-steps result smallest abort?])
 
-(defn mk-qc-state [options]
+(defn- mk-qc-state [options]
   (merge {:num-tests 100
           :so-far-tests 0
           :shrunk {:total-nodes-visited 0
@@ -18,25 +17,18 @@
          options))
 
 (def steps
-  #{:started :trying :succeeded :failed :shrinking :shrunk :aborted})
+  "state flow diagram:
 
-"
-  |
-  |
-  v
-  trial, trial, trial
-  |
-  |
-  v
-  complete     |     failure
-                       |
-                       |
-                       v 
-                       shrink-step, shrink-step, shrink-step
-                       |
-                       v
-                       shrunk
-"
+       started
+          v
+  trial, trial, [...]
+          v
+succeeded | failure
+                 v
+    shrinking, shrinking, [...]
+                 v
+               shrunk"
+  #{:started :trying :succeeded :failed :shrinking :shrunk :aborted})
 
 (defn- make-rng
   [seed]
@@ -45,7 +37,7 @@
     (let [non-nil-seed (get-current-time-millis)]
       [non-nil-seed (random/make-random non-nil-seed)])))
 
-(defn shrink
+(defn- shrink
   [{:keys [result-map-rose] :as qc-state} step-fn]
   (let [shrinks-this-depth (rose/children result-map-rose)]
     (loop [qc-state qc-state
