@@ -109,15 +109,14 @@
               result (:result (rose/root result-map-rose))
               qc-result (-> qc-result
                             (update :so-far-tests inc)
-                            (assoc :size size)
-                            (assoc :result result))]
+                            (assoc :size size
+                                   :state :trying
+                                   :result-map-rose result-map-rose
+                                   :result result)
+                            step-fn)]
           (if (results/passing? result)
+            (recur qc-result rest-size-seq r2)
             (-> qc-result
-                (assoc :state :trying)
-                step-fn
-                (recur rest-size-seq r2))
-            (-> qc-result
-                (assoc :state :failed
-                       :result-map-rose result-map-rose)
+                (assoc :state :failed)
                 step-fn
                 (shrink step-fn))))))))
