@@ -63,3 +63,18 @@
         (is (= shrunk-args
                (reverse (sort shrunk-args)))
             "failing steps args are sorted in descending order")))))
+
+(deftest interrupt-quick-check-test
+  (let [calls (atom [])
+        step-fn (fn [{:keys [so-far-tests] :as qc-state}]
+                  (swap! calls conj qc-state)
+                  (if (= 10 so-far-tests)
+                    (assoc qc-state :num-tests 15)
+                    qc-state))
+        prop (prop/for-all [n gen/nat]
+               (<= 0 n))
+        result (tc2/quick-check 20 prop {:step-fn step-fn})]
+      (is (= 15
+             (:so-far-tests result)
+             (count (filter #(= :trying (:step %)) @calls)))
+          "property was tried 15 times, even though it was initially asked to run 20 trials")))

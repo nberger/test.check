@@ -116,7 +116,7 @@ succeeded | failure
   [num-tests property {:keys [seed max-size step-fn]
                        :or {max-size 200 step-fn identity}}]
   (let [[created-seed rng] (make-rng seed)]
-    (loop [{:keys [so-far-tests step]
+    (loop [{:keys [num-tests so-far-tests step]
             :as qc-state} (step-fn
                              (mk-qc-state {:num-tests num-tests
                                            :step :started
