@@ -51,7 +51,8 @@
     (loop [qc-result qc-result
            nodes shrinks-this-depth
            current-smallest (rose/root result-map-rose)]
-      (if (empty? nodes)
+      (cond
+        (empty? nodes)
         (let [shrink-result (:result current-smallest)]
           (-> qc-result
               (assoc :state :shrunk)
@@ -59,6 +60,11 @@
               (assoc-in [:shrunk :result-data] (results/result-data shrink-result))
               (assoc-in [:shrunk :smallest] (:args current-smallest))
               step-fn))
+
+        (:abort? qc-result)
+        (step-fn (assoc qc-result :state :aborted))
+
+        :else
         (let [;; can't destructure here because that could force
               ;; evaluation of (second nodes)
               head (first nodes)
@@ -101,8 +107,13 @@
                                             :property property}))
            size-seq (gen/make-size-range-seq max-size)
            rstate rng]
-      (if (== so-far-tests num-tests)
+      (cond
+        (== so-far-tests num-tests)
         (step-fn (assoc qc-result :state :succeeded))
+
+        (:abort? qc-result?)
+        (step-fn (assoc qc-result :state :aborted))
+
         (let [[size & rest-size-seq] size-seq
               [r1 r2] (random/split rstate)
               result-map-rose (gen/call-gen property r1 size)
