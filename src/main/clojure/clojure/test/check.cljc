@@ -12,10 +12,43 @@
             [clojure.test.check.random :as random]
             [clojure.test.check.results :as results]
             [clojure.test.check.rose-tree :as rose]
-            [clojure.test.check.impl :refer [get-current-time-millis
-                                             exception-like?]]))
+            [clojure.test.check.impl :refer [get-current-time-millis]]))
 
-(declare shrink-loop failure)
+(defn- mk-qc-state [options]
+  (merge {:num-tests 100
+          :so-far-tests 0
+          :shrunk {:total-nodes-visited 0
+                   :depth 0}}
+         options))
+
+(defn- step-fn->old-qc-behavior
+  "Makes step-fn to return the same map as it was being returned by quick-check
+  before the introduction of step-fn, for the :succeeded and :shrunk steps. For
+  other steps, it returns the quick-check state at that point, unmodified.
+
+  The map has the following keys:
+  - for :succeeded step: [:result :num-tests :seed]
+  - for :shrunk step: [:result :result-data :seed :failing-size :num-tests :fail :shrunk]"
+  [step-fn]
+  (fn [qc-state]
+    (let [{:keys [step property num-tests so-far-tests seed size shrunk]
+           :as qc-state} (step-fn qc-state)]
+      (case step
+        :succeeded
+        {:result true :num-tests so-far-tests :seed seed}
+
+        :shrunk
+        (let [{:keys [result args]} (rose/root (:result-map-rose qc-state))]
+          {:result (results/passing? result)
+           :result-data (results/result-data result)
+           :seed seed
+           :failing-size size
+           :num-tests so-far-tests
+           :fail (vec args)
+           :shrunk shrunk})
+
+        ;; else
+        qc-state))))
 
 (defn- make-rng
   [seed]
@@ -24,15 +57,56 @@
     (let [non-nil-seed (get-current-time-millis)]
       [non-nil-seed (random/make-random non-nil-seed)])))
 
-(defn- complete
-  [property num-trials seed reporter-fn]
-  (reporter-fn {:type :complete
-                :property property
-                :result true
-                :num-tests num-trials
-                :seed seed})
-
-  {:result true :num-tests num-trials :seed seed})
+(defn- shrink
+  [{:keys [result-map-rose] :as qc-state} step-fn]
+  (let [shrinks-this-depth (rose/children result-map-rose)]
+    (loop [qc-state (assoc qc-state :step :shrinking)
+           nodes shrinks-this-depth
+           current-smallest (rose/root result-map-rose)]
+      (if (empty? nodes)
+        (let [shrink-result (:result current-smallest)]
+          (-> qc-state
+              (assoc :step :shrunk)
+              (update :shrunk
+                      assoc
+                      :result (results/passing? shrink-result)
+                      :result-data (results/result-data shrink-result)
+                      :smallest (:args current-smallest))
+              step-fn))
+        (let [;; can't destructure here because that could force
+              ;; evaluation of (second nodes)
+              head (first nodes)
+              tail (rest nodes)
+              result (:result (rose/root head))
+              args (:args (rose/root head))
+              qc-state (-> qc-state
+                           (update-in [:shrunk :total-nodes-visited] inc))]
+          (if (results/passing? result)
+            ;; this node passed the test, so now try testing its right-siblings
+            (-> qc-state
+                (update :shrunk
+                        assoc
+                        :args args
+                        :result result
+                        :pass? true
+                        :smallest current-smallest)
+                step-fn
+                (recur tail current-smallest))
+            ;; this node failed the test, so check if it has children,
+            ;; if so, traverse down them. If not, save this as the best example
+            ;; seen now and then look at the right-siblings
+            ;; children
+            (let [new-smallest (rose/root head)
+                  qc-state (-> qc-state
+                               (update :shrunk
+                                       assoc
+                                       :args args
+                                       :result result
+                                       :pass? false
+                                       :smallest new-smallest))]
+              (if-let [children (seq (rose/children head))]
+                (recur (step-fn (update-in qc-state [:shrunk :depth] inc)) children new-smallest)
+                (recur (step-fn qc-state) tail new-smallest)))))))))
 
 (defn quick-check
   "Tests `property` `num-tests` times.
@@ -50,24 +124,39 @@
     prevents, for example, generating a five-thousand element vector on
     the very first test.
 
-  `:reporter-fn`
+  `:step-fn`
     A callback function that will be called at various points in the test
-    run, with a map like:
+    run with a map (the quick-check state) like:
 
-      ;; called after a passing trial
-      {:type      :trial
+      ;; called after a trial
+      {:step      :trying
        :property  #<...>
-       :so-far    <number of tests run so far>
+       :so-far-tests <number of tests run so far>
        :num-tests <total number of tests>}
 
-      ;; called after each failing trial
-      {:type         :failure
+      ;; called when a failure is found
+      {:step         :failed
        :property     #<...>
        :result       ...
-       :trial-number <tests ran before failure found>
-       :failing-args [...]}
+       :so-far-tests <tests ran before failure found>
+       :num-tests    <total number of tests>
+       :result-map-rose <rose-tree of result maps. root has failing args>}
 
-    It will also be called on :complete, :shrink-step and :shrunk.
+    It must return the (potentially modified) QC state record
+
+    It will also be called on :started, :succeeded, :shrinking and :shrunk.
+
+    State flow diagram:
+
+           started
+              v
+      trial, trial, [...]
+              v
+    succeeded | failure
+                     v
+        shrinking, shrinking, [...]
+                     v
+                   shrunk
 
   Examples:
 
@@ -77,115 +166,39 @@
       (quick-check 200 p
                    :seed 42
                    :max-size 50
-                   :reporter-fn (fn [m]
-                                  (when (= :failure (:type m))
-                                    (println \"Uh oh...\"))))"
-  [num-tests property & {:keys [seed max-size reporter-fn]
-                         :or {max-size 200, reporter-fn (constantly nil)}}]
+                   :step-fn (fn [m]
+                              (when (= :failed (:step m))
+                                (println \"Uh oh...\"))
+                              m))"
+  [num-tests property & {:keys [seed max-size step-fn]
+                         :or {max-size 200, step-fn identity}}]
   (let [[created-seed rng] (make-rng seed)
-        size-seq (gen/make-size-range-seq max-size)]
-    (loop [so-far 0
-           size-seq size-seq
+        ; adapt step-fn for backwards compatibility
+        step-fn (step-fn->old-qc-behavior step-fn)]
+    (loop [{:keys [num-tests so-far-tests step]
+            :as qc-state} (step-fn
+                             (mk-qc-state {:num-tests num-tests
+                                           :step :started
+                                           :seed created-seed
+                                           :property property}))
+           size-seq (gen/make-size-range-seq max-size)
            rstate rng]
-      (if (== so-far num-tests)
-        (complete property num-tests created-seed reporter-fn)
+      (if (== so-far-tests num-tests)
+        (step-fn (assoc qc-state :step :succeeded))
         (let [[size & rest-size-seq] size-seq
               [r1 r2] (random/split rstate)
               result-map-rose (gen/call-gen property r1 size)
-              result-map (rose/root result-map-rose)
-              result (:result result-map)
-              args (:args result-map)
-              so-far (inc so-far)]
+              result (:result (rose/root result-map-rose))
+              qc-state (-> qc-state
+                            (update :so-far-tests inc)
+                            (assoc :size size
+                                   :step :trying
+                                   :result-map-rose result-map-rose
+                                   :result result)
+                            step-fn)]
           (if (results/passing? result)
-            (do
-              (reporter-fn {:type :trial
-                            :property property
-                            :so-far so-far
-                            :num-tests num-tests})
-              (recur so-far rest-size-seq r2))
-            (failure property result-map-rose so-far size created-seed reporter-fn)))))))
-
-(defn- smallest-shrink
-  [total-nodes-visited depth smallest]
-  (let [{:keys [result]} smallest]
-    {:total-nodes-visited total-nodes-visited
-     :depth depth
-     :result (results/passing? result)
-     :result-data (results/result-data result)
-     :smallest (:args smallest)}))
-
-(defn- shrink-loop
-  "Shrinking a value produces a sequence of smaller values of the same type.
-  Each of these values can then be shrunk. Think of this as a tree. We do a
-  modified depth-first search of the tree:
-
-  Do a non-exhaustive search for a deeper (than the root) failing example.
-  Additional rules added to depth-first search:
-  * If a node passes the property, you may continue searching at this depth,
-  but not backtrack
-  * If a node fails the property, search its children
-  The value returned is the left-most failing example at the depth where a
-  passing example was found.
-
-  Calls reporter-fn on every shrink step."
-  [rose-tree reporter-fn]
-  (let [shrinks-this-depth (rose/children rose-tree)]
-    (loop [nodes shrinks-this-depth
-           current-smallest (rose/root rose-tree)
-           total-nodes-visited 0
-           depth 0]
-      (if (empty? nodes)
-        (smallest-shrink total-nodes-visited depth current-smallest)
-        (let [;; can't destructure here because that could force
-              ;; evaluation of (second nodes)
-              head (first nodes)
-              tail (rest nodes)
-              result (:result (rose/root head))
-              args (:args (rose/root head))
-              shrink-step-map {:type :shrink-step
-                               :result result
-                               :args args}]
-          (if (results/passing? result)
-            ;; this node passed the test, so now try testing its right-siblings
-            (do
-              (reporter-fn (merge shrink-step-map {:pass? true
-                                                   :current-smallest current-smallest}))
-              (recur tail current-smallest (inc total-nodes-visited) depth))
-            ;; this node failed the test, so check if it has children,
-            ;; if so, traverse down them. If not, save this as the best example
-            ;; seen now and then look at the right-siblings
-            ;; children
-            (let [new-smallest (rose/root head)]
-              (reporter-fn (merge shrink-step-map {:pass? false
-                                                   :current-smallest new-smallest}))
-              (if-let [children (seq (rose/children head))]
-                (recur children new-smallest (inc total-nodes-visited) (inc depth))
-                (recur tail new-smallest (inc total-nodes-visited) depth)))))))))
-
-(defn- failure
-  [property failing-rose-tree trial-number size seed reporter-fn]
-  (let [root (rose/root failing-rose-tree)
-        result (:result root)
-        failing-args (:args root)]
-
-    (reporter-fn {:type :failure
-                  :property property
-                  :result (results/passing? result)
-                  :result-data (results/result-data result)
-                  :trial-number trial-number
-                  :failing-args failing-args})
-
-    (let [shrunk (shrink-loop failing-rose-tree
-                              #(reporter-fn (assoc % :property property)))]
-      (reporter-fn {:type :shrunk
-                    :property property
-                    :trial-number trial-number
-                    :failing-args failing-args
-                    :shrunk shrunk})
-      {:result (results/passing? result)
-       :result-data (results/result-data result)
-       :seed seed
-       :failing-size size
-       :num-tests trial-number
-       :fail (vec failing-args)
-       :shrunk shrunk})))
+            (recur qc-state rest-size-seq r2)
+            (-> qc-state
+                (assoc :step :failed)
+                step-fn
+                (shrink step-fn))))))))
