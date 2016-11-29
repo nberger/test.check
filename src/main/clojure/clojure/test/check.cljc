@@ -24,11 +24,11 @@
 
 (defn reporter-fn->step-fn
   [reporter-fn]
-  (fn [{:keys [state property num-tests so-far-tests seed size shrunk]
-        :as qc-result}]
-    (case state
+  (fn [{:keys [step property num-tests so-far-tests seed size shrunk]
+        :as qc-state}]
+    (case step
       :started
-      qc-result
+      qc-state
 
       :succeeded
       (complete property so-far-tests seed reporter-fn)
@@ -39,10 +39,10 @@
                             :property property
                             :so-far so-far-tests
                             :num-tests num-tests})
-        qc-result)
+        qc-state)
 
       :failed
-      (let [{:keys [result args]} (rose/root (:result-map-rose qc-result))]
+      (let [{:keys [result args]} (rose/root (:result-map-rose qc-state))]
         (do
           (reporter-fn {:type :failure
                         :property property
@@ -50,7 +50,7 @@
                         :result-data (results/result-data result)
                         :trial-number so-far-tests
                         :failing-args args})
-          qc-result))
+          qc-state))
 
       :shrinking
       (let [{:keys [result args pass? smallest]} shrunk]
@@ -60,10 +60,10 @@
                         :args args
                         :pass? pass?
                         :current-smallest smallest})
-          qc-result))
+          qc-state))
 
       :shrunk
-      (let [{:keys [result args]} (rose/root (:result-map-rose qc-result))]
+      (let [{:keys [result args]} (rose/root (:result-map-rose qc-state))]
         (reporter-fn {:type :shrunk
                       :property property
                       :trial-number so-far-tests
