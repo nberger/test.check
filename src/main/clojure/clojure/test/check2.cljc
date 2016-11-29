@@ -82,6 +82,37 @@ succeeded | failure
                 (recur qc-state tail new-smallest)))))))))
 
 (defn quick-check
+  "Tests `property` `num-tests` times.
+
+  Takes several optional keys:
+
+  `:seed`
+    Can be used to re-run previous tests, as the seed used is returned
+    after a test is run.
+
+  `:max-size`.
+    can be used to control the 'size' of generated values. The size will
+    start at 0, and grow up to max-size, as the number of tests increases.
+    Generators will use the size parameter to bound their growth. This
+    prevents, for example, generating a five-thousand element vector on
+    the very first test.
+
+  `:step-fn`
+    A callback function that will be called at various points in the test
+    run, with a QuickCheckState record. This function is intended to provide feedback
+    to the user. It must return the (possibly modified) QC state record.
+
+  Examples:
+
+      (def p (for-all [a gen/pos-int] (> (* a a) a)))
+
+      (quick-check 100 p)
+      (quick-check 200 p {:seed 42
+                          :max-size 50
+                          :step-fn (fn [state]
+                                     (when (= :failure (:step m))
+                                       (println \"Uh oh...\"))
+                                     state)})"
   [num-tests property {:keys [seed max-size step-fn]
                        :or {max-size 200 step-fn identity}}]
   (let [[created-seed rng] (make-rng seed)]
