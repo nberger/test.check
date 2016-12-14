@@ -265,7 +265,8 @@
 
 (defn equiv-runs
   [seed]
-  (= (unique-test seed) (unique-test seed)))
+  (= (dissoc (unique-test seed) :property :result-map-rose)
+     (dissoc (unique-test seed) :property :result-map-rose)))
 
 (deftest tests-are-deterministic
   (testing "If two runs are started with the same seed, they should
@@ -981,40 +982,48 @@
 ;; reporter-fn
 ;; ---------------------------------------------------------------------------
 
-(deftest reporter-fn-calls-test
+(defn mk-store-states-step-fn
+  [states-atom]
+  (fn [qc-state]
+    (swap! states-atom conj qc-state)
+    qc-state))
+
+(deftest step-fn-calls-test
   (testing "a failing prop"
     (let [calls (atom [])
-          reporter-fn (partial swap! calls conj)
+          step-fn (mk-store-states-step-fn calls)
           prop (prop/for-all [n gen/nat]
                  (> 5 n))]
-      (tc/quick-check 1000 prop :reporter-fn reporter-fn)
-      (is (= #{:trial :failure :shrink-step :shrunk}
-             (->> @calls (map :type) set)))))
+      (tc/quick-check 1000 prop :step-fn step-fn)
+      (is (= #{:started :trying :failed :shrinking :shrunk}
+             (->> @calls (map :step) set)))))
 
   (testing "a successful prop"
     (let [calls (atom [])
-          reporter-fn (partial swap! calls conj)
+          step-fn (mk-store-states-step-fn calls)
           prop (prop/for-all [n gen/nat]
                  (<= 0 n))]
-      (tc/quick-check 5 prop :reporter-fn reporter-fn)
-      (is (= #{:trial :complete}
-             (->> @calls (map :type) set))))))
+      (tc/quick-check 5 prop :step-fn step-fn)
+      (is (= #{:started :trying :succeeded}
+             (->> @calls (map :step) set))))))
 
 (deftest shrink-step-events-test
   (let [events (atom [])
-        reporter-fn (partial swap! events conj)
+        step-fn (mk-store-states-step-fn events)
         pred (fn [n] (not (< 100 n)))
         prop (prop/for-all [n (gen/scale (partial * 10) gen/nat)]
                (pred n))]
-    (tc/quick-check 100 prop :reporter-fn reporter-fn)
-    (let [shrink-steps (filter #(= :shrink-step (:type %)) @events)
-          failing-steps (filter (complement :pass?) shrink-steps)
-          passing-steps (filter :pass? shrink-steps)
-          get-args-and-smallest-args (juxt (comp first :args) (comp first :args :current-smallest))]
+    (tc/quick-check 100 prop :step-fn step-fn)
+    (let [shrink-steps (filter #(= :shrinking (:step %)) @events)
+          pass? (comp :pass? :shrunk)
+          failing-steps (filter (complement pass?) shrink-steps)
+          passing-steps (filter pass? shrink-steps)
+          get-args-and-smallest-args (juxt (comp first :args :shrunk) (comp first :args :smallest :shrunk))]
       (is (seq failing-steps))
-      (is (every? #(not (pred (-> % :args first))) failing-steps)
+      (is (seq passing-steps))
+      (is (every? #(not (pred (-> % :shrunk :args first))) failing-steps)
           "pred on args is falsey in all failing steps")
-      (is (every? #(pred (-> % :args first)) passing-steps)
+      (is (every? #(pred (-> % :shrunk :args first)) passing-steps)
           "pred on args is truthy in all passing steps")
       (is (->> failing-steps
                (map get-args-and-smallest-args)
@@ -1028,6 +1037,22 @@
         (is (= shrunk-args
                (reverse (sort shrunk-args)))
             "failing steps args are sorted in descending order")))))
+
+(deftest abort-quick-check-test
+  (let [calls (atom [])
+        step-fn (fn [{:keys [so-far-tests] :as qc-state}]
+                  (swap! calls conj qc-state)
+                  (if (= 10 so-far-tests)
+                    (assoc qc-state :num-tests 15)
+                    qc-state))
+        prop (prop/for-all [n gen/nat]
+               (<= 0 n))
+        result (tc/quick-check 20 prop :step-fn step-fn)]
+      (is (:result result))
+      (is (= 15
+             (:num-tests result)
+             (count (filter #(= :trying (:step %)) @calls)))
+          "property was tried 15 times, even though it was initially asked to run 20 trials")))
 
 ;; TCHECK-77 Regression
 ;; ---------------------------------------------------------------------------
