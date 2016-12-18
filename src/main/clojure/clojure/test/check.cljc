@@ -133,7 +133,7 @@
 
   `:step-fn`
     A callback function that will be called at various points in the test
-    run, with a map like:
+    run with a map (the quick-check state) like:
 
       ;; called after a trial
       {:step      :trying
@@ -149,7 +149,7 @@
        :num-tests    <total number of tests>
        :result-map-rose <rose-tree of result maps. root has failing args>}
 
-    It must return the (possibly modified) QC state record
+    It must return the (potentially modified) QC state record
 
     It will also be called on :started, :succeeded, :shrinking and :shrunk.
 
