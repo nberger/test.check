@@ -60,9 +60,6 @@
     (let [non-nil-seed (get-current-time-millis)]
       [non-nil-seed (random/make-random non-nil-seed)])))
 
-(def ^:private steps
-  #{:started :trying :succeeded :failed :shrinking :shrunk})
-
 (defn- shrink
   [{:keys [result-map-rose] :as qc-state} step-fn]
   (let [shrinks-this-depth (rose/children result-map-rose)]
