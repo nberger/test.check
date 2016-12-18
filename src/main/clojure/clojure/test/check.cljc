@@ -15,14 +15,13 @@
             [clojure.test.check.impl :refer [get-current-time-millis]]))
 
 (defrecord QuickCheckState
-  [step num-tests so-far-tests shrink-total-steps result smallest abort?])
+  [step num-tests so-far-tests shrink-total-steps result smallest])
 
 (defn- mk-qc-state [options]
   (merge {:num-tests 100
           :so-far-tests 0
           :shrunk {:total-nodes-visited 0
-                   :depth 0}
-          :abort? false}
+                   :depth 0}}
          options))
 
 (defn- step-fn->old-qc-behavior
@@ -62,7 +61,7 @@
       [non-nil-seed (random/make-random non-nil-seed)])))
 
 (def ^:private steps
-  #{:started :trying :succeeded :failed :shrinking :shrunk :aborted})
+  #{:started :trying :succeeded :failed :shrinking :shrunk})
 
 (defn- shrink
   [{:keys [result-map-rose] :as qc-state} step-fn]
