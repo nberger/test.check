@@ -57,6 +57,50 @@
     (let [non-nil-seed (get-current-time-millis)]
       [non-nil-seed (random/make-random non-nil-seed)])))
 
+(defn- async-shrink
+  [{:keys [result-map-rose] :as qc-state} step-fn]
+  (throw (ex-info "Not implemented yet!" {:qc-state qc-state})))
+
+(defn- async-quick-check*
+  [{:keys [num-tests so-far-tests step property]
+   :as qc-state}
+   size-seq rstate step-fn]
+  (if (== so-far-tests num-tests)
+    (step-fn (assoc qc-state :step :succeeded))
+    (let [[size & rest-size-seq] size-seq
+          [r1 r2] (random/split rstate)
+          result-map-rose (gen/call-gen property r1 size)
+          async-result-fn (:result (rose/root result-map-rose))]
+      (async-result-fn
+        (fn [result]
+          (let [qc-state (-> qc-state
+                             (update :so-far-tests inc)
+                             (assoc :size size
+                                    :step :trying
+                                    :result-map-rose result-map-rose
+                                    :result result)
+                             step-fn)]
+            (if (results/passing? result)
+              (async-quick-check* qc-state rest-size-seq r2 step-fn)
+              (-> qc-state
+                  (assoc :step :failed)
+                  step-fn
+                  (async-shrink step-fn)))))))))
+
+(defn async-quick-check
+  [num-tests async-property & {:keys [seed max-size step-fn]
+                         :or {max-size 200, step-fn identity}}]
+  (let [[created-seed rng] (make-rng seed)
+        {:keys [num-tests so-far-tests step]
+         :as qc-state} (step-fn
+                         (mk-qc-state {:num-tests num-tests
+                                       :step :started
+                                       :seed created-seed
+                                       :property async-property}))
+        size-seq (gen/make-size-range-seq max-size)
+        rstate rng]
+    (async-quick-check* qc-state size-seq rstate step-fn)))
+
 (defn quick-check
   "Tests `property` `num-tests` times.
 
