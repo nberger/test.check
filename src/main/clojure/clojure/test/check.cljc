@@ -57,9 +57,61 @@
     (let [non-nil-seed (get-current-time-millis)]
       [non-nil-seed (random/make-random non-nil-seed)])))
 
+(defn- async-shrink*
+  [qc-state nodes current-smallest step-fn]
+  (if (empty? nodes)
+    (let [shrink-result (:result current-smallest)]
+      (-> qc-state
+          (assoc :step :shrunk)
+          (update :shrunk
+                  assoc
+                  :result (results/passing? shrink-result)
+                  :result-data (results/result-data shrink-result)
+                  :smallest (:args current-smallest))
+          step-fn))
+    (let [;; can't destructure here because that could force
+          ;; evaluation of (second nodes)
+          head (first nodes)
+          tail (rest nodes)
+          head-async-result-fn (:result (rose/root head))
+          args (:args (rose/root head))
+          qc-state (-> qc-state
+                       (update-in [:shrunk :total-nodes-visited] inc))]
+      (head-async-result-fn
+        (fn [result]
+          (if (results/passing? result)
+            ;; this node passed the test, so now try testing its right-siblings
+            (-> qc-state
+                (update :shrunk
+                        assoc
+                        :args args
+                        :result result
+                        :pass? true
+                        :smallest current-smallest)
+                step-fn
+                (async-shrink* tail current-smallest step-fn))
+            ;; this node failed the test, so check if it has children,
+            ;; if so, traverse down them. If not, save this as the best example
+            ;; seen now and then look at the right-siblings
+            ;; children
+            (let [new-smallest (rose/root head)
+                  qc-state (-> qc-state
+                               (update :shrunk
+                                       assoc
+                                       :args args
+                                       :result result
+                                       :pass? false
+                                       :smallest new-smallest))]
+              (if-let [children (seq (rose/children head))]
+                (async-shrink* (step-fn (update-in qc-state [:shrunk :depth] inc)) children new-smallest step-fn)
+                (async-shrink* (step-fn qc-state) tail new-smallest step-fn)))))))))
+
 (defn- async-shrink
   [{:keys [result-map-rose] :as qc-state} step-fn]
-  (throw (ex-info "Not implemented yet!" {:qc-state qc-state})))
+  (let [qc-state (assoc qc-state :step :shrinking)
+        nodes (rose/children result-map-rose)
+        current-smallest (rose/root result-map-rose)]
+    (async-shrink* qc-state nodes current-smallest step-fn)))
 
 (defn- async-quick-check*
   [{:keys [num-tests so-far-tests step property]
