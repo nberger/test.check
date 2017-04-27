@@ -53,6 +53,20 @@
   Delegates to clojure.test/report and returns the quickcheck state unmodified."
   (comp tc/result-as-0-9-0-step-fn report-via-ct-step-fn))
 
+(defn make-async-step-fn
+  [step-fn done test-var-name]
+  (comp
+    (fn [{:keys [step] :as qc-state}]
+      (case step
+        (:succeeded :shrunk)
+        (do
+          (assert-check (assoc qc-state :test-var test-var-name))
+          (done))
+
+        ;; else
+        qc-state))
+    step-fn))
+
 (def ^:dynamic *default-opts*
   "The default options passed to clojure.test.check/quick-check
   by defspec."
@@ -68,6 +82,39 @@
                               options)
         :else (throw (ex-info (str "Invalid defspec options: " (pr-str options))
                               {:bad-options options}))))
+
+(defmacro defspec-async
+  "Like defspec but used to verify async properties in clojurescript.
+  Uses `async-quick-check` instead of `quick-check`. See `async-quick-check` for how
+  to write an async property
+  Example:
+
+      (ct/defspec-async an-async-test
+        (prop/for-all* [gen/s-pos-int]
+          (fn [x]
+            (fn [trial-done-fn]
+              (js/setTimeout #(trial-done-fn (pos? x))
+                             10)))))
+  "
+  {:arglists '([name property] [name num-tests? property] [name options? property])}
+  ([name property] `(defspec-async ~name nil ~property))
+  ([name options property]
+   (let []
+     `(defn ~(vary-meta name assoc
+                      ::defspec true
+                      :test `#(~name))
+      {:arglists '([] ~'[num-tests & {:keys [seed max-size step-fn]}])}
+      ([] (let [options# (process-options ~options)]
+            (apply ~name (:num-tests options#) (apply concat options#))))
+      ([times# & {:as quick-check-opts#}]
+       (cljs.test/async done#
+         (let [options# (-> (merge (process-options ~options) quick-check-opts#)
+                            (update :step-fn make-async-step-fn done# (str '~name)))]
+           (apply
+             tc/async-quick-check
+             times#
+             (vary-meta ~property assoc :name (str '~property))
+             (apply concat options#)))))))))
 
 (defmacro defspec
   "Defines a new clojure.test test var that uses `quick-check` to verify the
