@@ -14,6 +14,8 @@
             [clojure.test.check.rose-tree :as rose]
             [clojure.test.check.impl :refer [get-current-time-millis]]))
 
+(declare shrink)
+
 (defn- mk-qc-state [options]
   (merge {:num-tests 100
           :so-far-tests 0
@@ -56,57 +58,6 @@
     [seed (random/make-random seed)]
     (let [non-nil-seed (get-current-time-millis)]
       [non-nil-seed (random/make-random non-nil-seed)])))
-
-(defn- shrink
-  [{:keys [result-map-rose] :as qc-state} step-fn]
-  (let [shrinks-this-depth (rose/children result-map-rose)]
-    (loop [qc-state (assoc qc-state :step :shrinking)
-           nodes shrinks-this-depth
-           current-smallest (rose/root result-map-rose)]
-      (if (empty? nodes)
-        (let [shrink-result (:result current-smallest)]
-          (-> qc-state
-              (assoc :step :shrunk)
-              (update :shrunk
-                      assoc
-                      :result (results/passing? shrink-result)
-                      :result-data (results/result-data shrink-result)
-                      :smallest (:args current-smallest))
-              step-fn))
-        (let [;; can't destructure here because that could force
-              ;; evaluation of (second nodes)
-              head (first nodes)
-              tail (rest nodes)
-              result (:result (rose/root head))
-              args (:args (rose/root head))
-              qc-state (-> qc-state
-                           (update-in [:shrunk :total-nodes-visited] inc))]
-          (if (results/passing? result)
-            ;; this node passed the test, so now try testing its right-siblings
-            (-> qc-state
-                (update :shrunk
-                        assoc
-                        :args args
-                        :result result
-                        :pass? true
-                        :smallest current-smallest)
-                step-fn
-                (recur tail current-smallest))
-            ;; this node failed the test, so check if it has children,
-            ;; if so, traverse down them. If not, save this as the best example
-            ;; seen now and then look at the right-siblings
-            ;; children
-            (let [new-smallest (rose/root head)
-                  qc-state (-> qc-state
-                               (update :shrunk
-                                       assoc
-                                       :args args
-                                       :result result
-                                       :pass? false
-                                       :smallest new-smallest))]
-              (if-let [children (seq (rose/children head))]
-                (recur (step-fn (update-in qc-state [:shrunk :depth] inc)) children new-smallest)
-                (recur (step-fn qc-state) tail new-smallest)))))))))
 
 (defn quick-check
   "Tests `property` `num-tests` times.
@@ -202,3 +153,54 @@
                 (assoc :step :failed)
                 step-fn
                 (shrink step-fn))))))))
+
+(defn- shrink
+  [{:keys [result-map-rose] :as qc-state} step-fn]
+  (let [shrinks-this-depth (rose/children result-map-rose)]
+    (loop [qc-state (assoc qc-state :step :shrinking)
+           nodes shrinks-this-depth
+           current-smallest (rose/root result-map-rose)]
+      (if (empty? nodes)
+        (let [shrink-result (:result current-smallest)]
+          (-> qc-state
+              (assoc :step :shrunk)
+              (update :shrunk
+                      assoc
+                      :result (results/passing? shrink-result)
+                      :result-data (results/result-data shrink-result)
+                      :smallest (:args current-smallest))
+              step-fn))
+        (let [;; can't destructure here because that could force
+              ;; evaluation of (second nodes)
+              head (first nodes)
+              tail (rest nodes)
+              result (:result (rose/root head))
+              args (:args (rose/root head))
+              qc-state (-> qc-state
+                           (update-in [:shrunk :total-nodes-visited] inc))]
+          (if (results/passing? result)
+            ;; this node passed the test, so now try testing its right-siblings
+            (-> qc-state
+                (update :shrunk
+                        assoc
+                        :args args
+                        :result result
+                        :pass? true
+                        :smallest current-smallest)
+                step-fn
+                (recur tail current-smallest))
+            ;; this node failed the test, so check if it has children,
+            ;; if so, traverse down them. If not, save this as the best example
+            ;; seen now and then look at the right-siblings
+            ;; children
+            (let [new-smallest (rose/root head)
+                  qc-state (-> qc-state
+                               (update :shrunk
+                                       assoc
+                                       :args args
+                                       :result result
+                                       :pass? false
+                                       :smallest new-smallest))]
+              (if-let [children (seq (rose/children head))]
+                (recur (step-fn (update-in qc-state [:shrunk :depth] inc)) children new-smallest)
+                (recur (step-fn qc-state) tail new-smallest)))))))))
