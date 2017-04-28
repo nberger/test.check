@@ -124,6 +124,7 @@
   [num-tests property & {:keys [seed max-size step-fn]
                          :or {max-size 200, step-fn identity}}]
   (let [[created-seed rng] (make-rng seed)
+        size-seq (gen/make-size-range-seq max-size)
         ; adapt step-fn for backwards compatibility
         step-fn (step-fn->old-qc-behavior step-fn)]
     (loop [{:keys [num-tests so-far-tests step]
@@ -132,7 +133,7 @@
                                            :step :started
                                            :seed created-seed
                                            :property property}))
-           size-seq (gen/make-size-range-seq max-size)
+           size-seq size-seq
            rstate rng]
       (if (== so-far-tests num-tests)
         (step-fn (assoc qc-state :step :succeeded))
