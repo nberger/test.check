@@ -23,34 +23,32 @@
                    :depth 0}}
          options))
 
-(defn- step-fn->old-qc-behavior
-  "Makes step-fn to return the same map as it was being returned by quick-check
-  before the introduction of step-fn, for the :succeeded and :shrunk steps. For
-  other steps, it returns the quick-check state at that point, unmodified.
+(defn result-as-0-9-0-step-fn
+  "step-fn that returns a map with the same shape as it was returned by quick-check
+  until version 0.9.0, for the :succeeded and :shrunk steps. For
+  other steps it returns the unmodified quick-check state at that point.
 
-  The map has the following keys:
+  The returned map has the following keys:
   - for :succeeded step: [:result :num-tests :seed]
   - for :shrunk step: [:result :result-data :seed :failing-size :num-tests :fail :shrunk]"
-  [step-fn]
-  (fn [qc-state]
-    (let [{:keys [step property num-tests so-far-tests seed size shrunk]
-           :as qc-state} (step-fn qc-state)]
-      (case step
-        :succeeded
-        {:result true :num-tests so-far-tests :seed seed}
+  [qc-state]
+  (let [{:keys [step property num-tests so-far-tests seed size shrunk]} qc-state]
+    (case step
+      :succeeded
+      {:result true :num-tests so-far-tests :seed seed}
 
-        :shrunk
-        (let [{:keys [result args]} (rose/root (:result-map-rose qc-state))]
-          {:result (results/passing? result)
-           :result-data (results/result-data result)
-           :seed seed
-           :failing-size size
-           :num-tests so-far-tests
-           :fail (vec args)
-           :shrunk shrunk})
+      :shrunk
+      (let [{:keys [result args]} (rose/root (:result-map-rose qc-state))]
+        {:result (results/passing? result)
+         :result-data (results/result-data result)
+         :seed seed
+         :failing-size size
+         :num-tests so-far-tests
+         :fail (vec args)
+         :shrunk shrunk})
 
-        ;; else
-        qc-state))))
+      ;; else
+      qc-state)))
 
 (defn- make-rng
   [seed]
@@ -122,11 +120,12 @@
                                 (println \"Uh oh...\"))
                               m))"
   [num-tests property & {:keys [seed max-size step-fn]
-                         :or {max-size 200, step-fn identity}}]
+                         :or {max-size 200}}]
   (let [[created-seed rng] (make-rng seed)
         size-seq (gen/make-size-range-seq max-size)
         ; adapt step-fn for backwards compatibility
-        step-fn (step-fn->old-qc-behavior step-fn)]
+        step-fn (or step-fn
+                    result-as-0-9-0-step-fn)]
     (loop [{:keys [num-tests so-far-tests step]
             :as qc-state} (step-fn
                              (mk-qc-state {:num-tests num-tests

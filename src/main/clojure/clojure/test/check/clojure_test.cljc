@@ -27,9 +27,7 @@
 
 (def ^:dynamic *default-test-count* 100)
 
-(defn default-step-fn
-  "Default function passed as the :step-fn to clojure.test.check/quick-check.
-  Delegates to clojure.test/report and returns the quickcheck state unmodified."
+(defn- report-via-ct-step-fn
   [{:keys [step] :as qc-state}]
   (case step
     :trying
@@ -49,6 +47,11 @@
                 :clojure.test.check.clojure-test/params (-> qc-state :shrunk :smallest vec)})
     nil)
   qc-state)
+
+(def default-step-fn
+  "Default function passed as the :step-fn to clojure.test.check/quick-check.
+  Delegates to clojure.test/report and returns the quickcheck state unmodified."
+  (comp tc/result-as-0-9-0-step-fn report-via-ct-step-fn))
 
 (def ^:dynamic *default-opts*
   "The default options passed to clojure.test.check/quick-check
