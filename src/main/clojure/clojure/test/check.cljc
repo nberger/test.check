@@ -14,7 +14,7 @@
             [clojure.test.check.rose-tree :as rose]
             [clojure.test.check.impl :refer [get-current-time-millis]]))
 
-(declare shrink)
+(declare shrink-loop)
 
 (defn- mk-qc-state [options]
   (merge {:num-tests 100
@@ -152,9 +152,9 @@
             (-> qc-state
                 (assoc :step :failed)
                 step-fn
-                (shrink step-fn))))))))
+                (shrink-loop step-fn))))))))
 
-(defn- shrink
+(defn- shrink-loop
   [{:keys [result-map-rose] :as qc-state} step-fn]
   (let [shrinks-this-depth (rose/children result-map-rose)]
     (loop [qc-state (assoc qc-state :step :shrinking)
