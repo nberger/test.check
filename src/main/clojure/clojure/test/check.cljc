@@ -75,7 +75,7 @@
 
   `:step-fn`
     A callback function that will be called at various points in the test
-    run with a map (the quick-check state) like:
+    run, with a map like:
 
       ;; called after a trial
       {:step      :trying
@@ -83,7 +83,7 @@
        :so-far-tests <number of tests run so far>
        :num-tests <total number of tests>}
 
-      ;; called when a failure is found
+      ;; called after a failing trial
       {:step         :failed
        :property     #<...>
        :result       ...
@@ -122,10 +122,9 @@
   [num-tests property & {:keys [seed max-size step-fn]
                          :or {max-size 200}}]
   (let [[created-seed rng] (make-rng seed)
-        size-seq (gen/make-size-range-seq max-size)
-        ; adapt step-fn for backwards compatibility
-        step-fn (or step-fn
-                    result-as-0-9-0-step-fn)]
+        ; use provided step-fn or a backwards compatible default
+        step-fn (or step-fn result-as-0-9-0-step-fn)
+        size-seq (gen/make-size-range-seq max-size)]
     (loop [{:keys [num-tests so-far-tests step]
             :as qc-state} (step-fn
                              (mk-qc-state {:num-tests num-tests
@@ -139,7 +138,8 @@
         (let [[size & rest-size-seq] size-seq
               [r1 r2] (random/split rstate)
               result-map-rose (gen/call-gen property r1 size)
-              result (:result (rose/root result-map-rose))
+              result-map (rose/root result-map-rose)
+              result (:result result-map)
               qc-state (-> qc-state
                             (update :so-far-tests inc)
                             (assoc :size size
