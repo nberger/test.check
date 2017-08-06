@@ -97,15 +97,13 @@
 
     State flow diagram:
 
-           started
-              v
-      trial, trial, [...]
-              v
-    succeeded | failure
-                     v
-        shrinking, shrinking, [...]
-                     v
-                   shrunk
+      started --> trying, trying, [..], trying --> succeeded
+                           |
+                           v
+                        failure --> shrinking, shrinking, [..], shrinking
+                                                                    |
+                                                                    v
+                                                                  shrunk
 
   Examples:
 
