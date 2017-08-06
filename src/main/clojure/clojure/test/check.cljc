@@ -155,6 +155,20 @@
                 (shrink-loop step-fn))))))))
 
 (defn- shrink-loop
+  "Shrinking a value produces a sequence of smaller values of the same type.
+  Each of these values can then be shrunk. Think of this as a tree. We do a
+  modified depth-first search of the tree:
+
+  Do a non-exhaustive search for a deeper (than the root) failing example.
+  Additional rules added to depth-first search:
+  * If a node passes the property, you may continue searching at this depth,
+  but not backtrack
+  * If a node fails the property, search its children
+  The value returned is the left-most failing example at the depth where a
+  passing example was found.
+
+  Calls step-fn on every shrink step, with :step :shrinking.
+  Calls step-fn once with :step :shrunk before returning the smallest shrink."
   [{:keys [result-map-rose] :as qc-state} step-fn]
   (let [shrinks-this-depth (rose/children result-map-rose)]
     (loop [qc-state (assoc qc-state :step :shrinking)
