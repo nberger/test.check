@@ -147,11 +147,11 @@
           (if (results/passing? result)
             (let [qc-state (-> qc-state
                                (assoc :step :trial)
-                               (step-fn))]
+                               step-fn)]
               (recur qc-state rest-size-seq r2))
             (-> qc-state
                 (assoc :step :failure)
-                (step-fn)
+                step-fn
                 (shrink-loop step-fn))))))))
 
 (defn- shrink-loop
@@ -178,11 +178,9 @@
         (let [shrink-result (:result current-smallest)]
           (-> qc-state
               (assoc :step :shrunk)
-              (update :shrunk
-                      assoc
-                      :result (results/passing? shrink-result)
-                      :result-data (results/result-data shrink-result)
-                      :smallest (:args current-smallest))
+              (update :shrunk merge {:result (results/passing? shrink-result)
+                                     :result-data (results/result-data shrink-result)
+                                     :smallest (:args current-smallest)})
               step-fn))
         (let [;; can't destructure here because that could force
               ;; evaluation of (second nodes)
