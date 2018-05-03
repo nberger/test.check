@@ -77,13 +77,13 @@
     A callback function that will be called at various points in the test
     run, with a map like:
 
-      ;; called after a trial
+      ;; called after a passing trial
       {:step      :trial
        :property  #<...>
        :so-far-tests <number of tests run so far>
        :num-tests <total number of tests>}
 
-      ;; called after a failing trial
+      ;; called after each failing trial
       {:step         :failure
        :property     #<...>
        :result       ...
@@ -139,17 +139,19 @@
               result-map (rose/root result-map-rose)
               result (:result result-map)
               qc-state (-> qc-state
-                            (update :so-far-tests inc)
-                            (assoc :size size
-                                   :step :trial
-                                   :result-map-rose result-map-rose
-                                   :result result)
-                            step-fn)]
+                           (update :so-far-tests inc)
+                           (assoc :size size
+                                  :result-map-rose result-map-rose
+                                  :result result)
+                           step-fn)]
           (if (results/passing? result)
-            (recur qc-state rest-size-seq r2)
+            (let [qc-state (-> qc-state
+                               (assoc :step :trial)
+                               (step-fn))]
+              (recur qc-state rest-size-seq r2))
             (-> qc-state
                 (assoc :step :failure)
-                step-fn
+                (step-fn)
                 (shrink-loop step-fn))))))))
 
 (defn- shrink-loop
