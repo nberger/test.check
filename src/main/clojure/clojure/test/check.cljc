@@ -193,12 +193,10 @@
           (if (results/passing? result)
             ;; this node passed the test, so now try testing its right-siblings
             (-> qc-state
-                (update :shrunk
-                        assoc
-                        :args args
-                        :result result
-                        :pass? true
-                        :smallest current-smallest)
+                (update :shrunk merge {:args args
+                                       :result result
+                                       :pass? true
+                                       :smallest current-smallest})
                 step-fn
                 (recur tail current-smallest))
             ;; this node failed the test, so check if it has children,
@@ -206,13 +204,10 @@
             ;; seen now and then look at the right-siblings
             ;; children
             (let [new-smallest (rose/root head)
-                  qc-state (-> qc-state
-                               (update :shrunk
-                                       assoc
-                                       :args args
-                                       :result result
-                                       :pass? false
-                                       :smallest new-smallest))]
+                  qc-state (update qc-state :shrunk merge {:args args
+                                                           :result result
+                                                           :pass? false
+                                                           :smallest new-smallest})]
               (if-let [children (seq (rose/children head))]
                 (recur (step-fn (update-in qc-state [:shrunk :depth] inc)) children new-smallest)
                 (recur (step-fn qc-state) tail new-smallest)))))))))
