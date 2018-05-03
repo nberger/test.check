@@ -120,7 +120,7 @@
   [num-tests property & {:keys [seed max-size step-fn]
                          :or {max-size 200}}]
   (let [[created-seed rng] (make-rng seed)
-        ; use provided step-fn or a backwards compatible default
+        ; use provided step-fn, or a backwards compatible default
         step-fn (or step-fn result-as-0-9-0-step-fn)
         size-seq (gen/make-size-range-seq max-size)]
     (loop [{:keys [num-tests so-far-tests step]
