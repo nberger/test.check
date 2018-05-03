@@ -1011,7 +1011,7 @@
           prop (prop/for-all [n gen/nat]
                  (> 5 n))]
       (tc/quick-check 1000 prop :step-fn step-fn)
-      (is (= #{:started :trying :failed :shrinking :shrunk}
+      (is (= #{:started :trial :failure :shrinking :shrunk}
              (->> @calls (map :step) set)))))
 
   (testing "a successful prop"
@@ -1020,7 +1020,7 @@
           prop (prop/for-all [n gen/nat]
                  (<= 0 n))]
       (tc/quick-check 5 prop :step-fn step-fn)
-      (is (= #{:started :trying :succeeded}
+      (is (= #{:started :trial :succeeded}
              (->> @calls (map :step) set))))))
 
 (deftest shrink-step-events-test
@@ -1066,7 +1066,7 @@
       (is (:result result))
       (is (= 15
              (:num-tests result)
-             (count (filter #(= :trying (:step %)) @calls)))
+             (count (filter #(= :trial (:step %)) @calls)))
           "property was tried 15 times, even though it was initially asked to run 20 trials")))
 
 ;; TCHECK-77 Regression

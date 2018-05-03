@@ -30,12 +30,12 @@
 (defn- report-via-ct-step-fn
   [{:keys [step] :as args}]
   (case step
-    :trying
+    :trial
     (ct/report {:type :clojure.test.check.clojure-test/trial
                 :clojure.test.check.clojure-test/property (:property args)
                 :clojure.test.check.clojure-test/trial [(:so-far-tests args) (:num-tests qc-state)]})
 
-    :failed
+    :failure
     (let [{failing-args :args} (rose/root (:result-map-rose args))]
       (ct/report {:type :clojure.test.check.clojure-test/shrinking
                   :clojure.test.check.clojure-test/property (:property args)

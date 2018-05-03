@@ -78,13 +78,13 @@
     run, with a map like:
 
       ;; called after a trial
-      {:step      :trying
+      {:step      :trial
        :property  #<...>
        :so-far-tests <number of tests run so far>
        :num-tests <total number of tests>}
 
       ;; called after a failing trial
-      {:step         :failed
+      {:step         :failure
        :property     #<...>
        :result       ...
        :so-far-tests <tests ran before failure found>
@@ -97,7 +97,7 @@
 
     State flow diagram:
 
-      started --> trying, trying, [..], trying --> succeeded
+      started --> trial, trial, [..], trial --> succeeded
                            |
                            v
                         failure --> shrinking, shrinking, [..], shrinking
@@ -114,7 +114,7 @@
                    :seed 42
                    :max-size 50
                    :step-fn (fn [m]
-                              (when (= :failed (:step m))
+                              (when (= :failure (:step m))
                                 (println \"Uh oh...\"))
                               m))"
   [num-tests property & {:keys [seed max-size step-fn]
@@ -141,14 +141,14 @@
               qc-state (-> qc-state
                             (update :so-far-tests inc)
                             (assoc :size size
-                                   :step :trying
+                                   :step :trial
                                    :result-map-rose result-map-rose
                                    :result result)
                             step-fn)]
           (if (results/passing? result)
             (recur qc-state rest-size-seq r2)
             (-> qc-state
-                (assoc :step :failed)
+                (assoc :step :failure)
                 step-fn
                 (shrink-loop step-fn))))))))
 
