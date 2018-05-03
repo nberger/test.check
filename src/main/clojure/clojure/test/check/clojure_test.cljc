@@ -28,25 +28,25 @@
 (def ^:dynamic *default-test-count* 100)
 
 (defn- report-via-ct-step-fn
-  [{:keys [step] :as qc-state}]
+  [{:keys [step] :as args}]
   (case step
     :trying
     (ct/report {:type :clojure.test.check.clojure-test/trial
-                :clojure.test.check.clojure-test/property (:property qc-state)
-                :clojure.test.check.clojure-test/trial [(:so-far-tests qc-state) (:num-tests qc-state)]})
+                :clojure.test.check.clojure-test/property (:property args)
+                :clojure.test.check.clojure-test/trial [(:so-far-tests args) (:num-tests qc-state)]})
 
     :failed
-    (let [{failing-args :args} (rose/root (:result-map-rose qc-state))]
+    (let [{failing-args :args} (rose/root (:result-map-rose args))]
       (ct/report {:type :clojure.test.check.clojure-test/shrinking
-                  :clojure.test.check.clojure-test/property (:property qc-state)
+                  :clojure.test.check.clojure-test/property (:property args)
                   :clojure.test.check.clojure-test/params (vec failing-args)}))
 
     :shrunk
     (ct/report {:type :clojure.test.check.clojure-test/shrunk
-                :clojure.test.check.clojure-test/property (:property qc-state)
-                :clojure.test.check.clojure-test/params (-> qc-state :shrunk :smallest vec)})
+                :clojure.test.check.clojure-test/property (:property args)
+                :clojure.test.check.clojure-test/params (-> args :shrunk :smallest vec)})
     nil)
-  qc-state)
+  args)
 
 (def default-step-fn
   "Default function passed as the :step-fn to clojure.test.check/quick-check.
