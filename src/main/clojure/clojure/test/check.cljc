@@ -173,7 +173,7 @@
                           :result          result
                           :result-data     (results/result-data result)
                           :seed            seed})
-            (recur qc-state so-far))
+            (recur so-far qc-state))
 
           :failure
           (let [{:keys [size created-seed]} qc-state]
