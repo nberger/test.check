@@ -97,6 +97,48 @@
                        :shrink-nodes tail
                        :current-smallest new-smallest)))))))))
 
+(defn qc-state->report-data [qc-state]
+  (case (:type qc-state)
+    :trial
+    (let [{:keys [property result-map-rose created-seed]} qc-state
+          {:keys [args result]} (rose/root result-map-rose)]
+      {:type        :trial
+       :args        args
+       :property    property
+       :result      result
+       :result-data (results/result-data result)
+       :seed        created-seed})
+
+    :failure
+    (let [{:keys [property type result-map-rose size created-seed]} qc-state
+          root (rose/root result-map-rose)
+          result (:result root)]
+      {:fail         (:args root)
+       :type         :failure
+       :failing-size size
+       :property     property
+       :result       (results/passing? result)
+       :result-data  (results/result-data result)
+       :seed         created-seed})
+
+    :shrink-step
+    (let [{:keys [property current-shrink-node current-smallest depth]} qc-state
+          {:keys [args result]} current-shrink-node]
+      {:type :shrink-step
+       :shrinking {:args                args
+                   :depth               depth
+                   :result              result
+                   :result-data         (results/result-data result)
+                   :smallest            (:args current-smallest)}})
+
+    :shrunk
+    (let [{:keys [current-smallest depth]} qc-state
+          {:keys [result args]} current-smallest]
+      {:depth depth
+       :result (results/passing? result)
+       :result-data (results/result-data result)
+       :smallest args})))
+
 (defn quick-check
   "Tests `property` `num-tests` times.
 
@@ -158,35 +200,18 @@
                    :seed seed}]
     (if (== so-far num-tests)
       (complete property num-tests (:created-seed qc-state) reporter-fn)
-      (let [{:keys [type result-map-rose] :as qc-state} (quick-check-step qc-state)
+      (let [qc-state (quick-check-step qc-state)
             so-far (inc so-far)]
-        (case type
+        (case (:type qc-state)
           :trial
-          (let [result-map (rose/root result-map-rose)
-                result (:result result-map)
-                args (:args result-map)]
-            (reporter-fn {:type            :trial
-                          :args            args
-                          :num-tests       so-far
-                          :num-tests-total num-tests
-                          :property        property
-                          :result          result
-                          :result-data     (results/result-data result)
-                          :seed            seed})
+          (do
+            (reporter-fn (-> (qc-state->report-data qc-state)
+                             (assoc :num-tests so-far
+                                    :num-tests-total num-tests)) )
             (recur so-far qc-state))
 
           :failure
-          (let [{:keys [size created-seed]} qc-state]
-            (failure qc-state so-far reporter-fn)))))))
-
-(defn- smallest-shrink
-  [total-nodes-visited depth smallest]
-  (let [{:keys [result]} smallest]
-    {:total-nodes-visited total-nodes-visited
-     :depth depth
-     :result (results/passing? result)
-     :result-data (results/result-data result)
-     :smallest (:args smallest)}))
+          (failure qc-state so-far reporter-fn))))))
 
 (defn- shrink-loop
   "Shrinking a value produces a sequence of smaller values of the same type.
@@ -201,38 +226,22 @@
   passing example was found.
   Calls reporter-fn on every shrink step."
   [qc-state reporter-fn]
-  (loop [{:keys [type depth current-smallest] :as qc-state} (quick-check-step qc-state)
+  (loop [qc-state (quick-check-step qc-state)
          total-nodes-visited 0]
-    (case type
+    (case (:type qc-state)
       :shrunk
-      (smallest-shrink total-nodes-visited depth current-smallest)
+      (-> (qc-state->report-data qc-state)
+          (assoc :total-nodes-visited total-nodes-visited))
 
       :shrink-step
-      (let [current-shrink-node (:current-shrink-node qc-state)
-            args (:args current-shrink-node)
-            result (:result current-shrink-node)]
-        (reporter-fn {:type :shrink-step
-                      :shrinking {:args                args
-                                  :depth               depth
-                                  :result              result
-                                  :result-data         (results/result-data result)
-                                  :smallest            (:args current-smallest)
-                                  :total-nodes-visited total-nodes-visited}})
+      (do
+        (reporter-fn (-> (qc-state->report-data qc-state)
+                         (assoc-in [:shrinking :total-nodes-visited] total-nodes-visited)))
         (recur (quick-check-step qc-state) (inc total-nodes-visited))))))
 
-
-(defn- failure
-  [{:keys [property result-map-rose size created-seed] :as qc-state}
-   trial-number reporter-fn]
-  (let [root (rose/root result-map-rose)
-        result (:result root)
-        failure-data {:fail         (:args root)
-                      :failing-size size
-                      :num-tests    trial-number
-                      :property     property
-                      :result       (results/passing? result)
-                      :result-data  (results/result-data result)
-                      :seed         created-seed}]
+(defn- failure [qc-state trial-number reporter-fn]
+  (let [failure-data (-> (qc-state->report-data qc-state)
+                         (assoc :num-tests trial-number))]
 
     (reporter-fn (assoc failure-data :type :failure))
 
