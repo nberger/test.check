@@ -221,7 +221,17 @@
             (recur so-far qc-state))
 
           :failure
-          (failure qc-state so-far reporter-fn))))))
+          (let [failure-data (-> (qc-state->report-data qc-state)
+                                 (assoc :num-tests so-far))]
+            (reporter-fn (assoc failure-data :type :failure))
+
+            (let [shrunk (shrink-loop qc-state #(reporter-fn (merge failure-data %)))]
+              (reporter-fn (assoc failure-data
+                                  :type :shrunk
+                                  :shrunk shrunk))
+              (-> failure-data
+                  (dissoc :property)
+                  (assoc :shrunk shrunk)))))))))
 
 (defn- shrink-loop
   [qc-state reporter-fn]
@@ -237,17 +247,3 @@
         (reporter-fn (-> (qc-state->report-data qc-state)
                          (assoc-in [:shrinking :total-nodes-visited] total-nodes-visited)))
         (recur (quick-check-step qc-state) (inc total-nodes-visited))))))
-
-(defn- failure [qc-state trial-number reporter-fn]
-  (let [failure-data (-> (qc-state->report-data qc-state)
-                         (assoc :num-tests trial-number))]
-
-    (reporter-fn (assoc failure-data :type :failure))
-
-    (let [shrunk (shrink-loop qc-state #(reporter-fn (merge failure-data %)))]
-      (reporter-fn (assoc failure-data
-                          :type :shrunk
-                          :shrunk shrunk))
-      (-> failure-data
-          (dissoc :property)
-          (assoc :shrunk shrunk)))))
